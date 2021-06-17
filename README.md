@@ -13,3 +13,7 @@ Argument | Description
 -p, --palette | Create a _palette.png file.
 --help | Display this help screen.
 --version | Display version information.
+
+
+## Download
+[Download the latest release.](https://github.com/borg100/gb_map_converter/releases/latest)
