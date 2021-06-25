@@ -37,14 +37,20 @@ namespace gb_map_converter
             public string OutputFolder { get; set; }
             [Option('n', "name", Required = false, HelpText = "Name to use for converted files and variables.")]
             public string Name { get; set; }
-            [Option('t', "tiles", Required = false, HelpText = "Create a _tiles.png file.")]
+            [Option('t', "tiles", Required = false, HelpText = "Create a tiles image file.", Default = true)]
             public bool TileOutput { get; set; }
-            [Option('p', "palette", Required = false, HelpText = "Create a _palette.png file.")]
+            [Option('p', "palette", Required = false, HelpText = "Create a palette image file.", Default = true)]
             public bool PaletteOutput { get; set; }
+            [Option('b', "bank", Required = false, HelpText = "Specify bank number. Use 0 to disable.", Default = 255)]
+            public int Bank { get; set; }
+            [Option('v', "verbose", Required = false, HelpText = "Show more information.", Default = false)]
+            public bool Verbose { get; set; }
         }
 
-        static bool Execute(string fileName, string arguments)
+        static bool Execute(Options options, string fileName, string arguments)
         {
+            Console.WriteLine($"Executing: {fileName} {arguments}");
+
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -66,26 +72,29 @@ namespace gb_map_converter
             process.BeginErrorReadLine();
             process.WaitForExit();
 
-            Console.Write(ProcessOutput.ToString());
+            if (options.Verbose)
+            {
+                Console.Write(ProcessOutput.ToString());
+            }
 
             return process.ExitCode == 0;
         }
 
-        static void AddHeader(StringBuilder sb, string outputPath, bool autobank = false, bool hideErrors = true)
+        static void AddHeader(StringBuilder sb, string outputPath, int bank = 0, bool hideErrors = true)
         {
             sb.AppendLine("/*");
             sb.AppendLine($"{"",4}{Path.GetFileName(outputPath).ToUpper()}");
             sb.AppendLine($"{"",4}{HeaderString}");
             sb.AppendLine("*/");
             sb.AppendLine();
-            if (autobank)
+            if (bank > 0)
             {
-                sb.AppendLine("#pragma bank 255");
+                sb.AppendLine($"#pragma bank {bank}");
                 if (hideErrors)
                 {
                     sb.AppendLine("#ifndef __INTELLISENSE__");
                 }
-                sb.AppendLine($"const void __at(255) __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
+                sb.AppendLine($"const void __at({bank}) __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
                 if (hideErrors)
                 {
                     sb.AppendLine("#endif");
@@ -94,15 +103,19 @@ namespace gb_map_converter
             }
         }
 
-        static void Run(Options o)
+        static void Run(Options options)
         {
-            // Input File
-            if (!File.Exists(o.InputFile))
+            string outputPath;
+
+            // Validate option: InputFile
+            if (!File.Exists(options.InputFile))
             {
                 Console.WriteLine("ERROR: The input image does not exist.");
                 return;
             }
-            var image = Image.FromFile(o.InputFile);
+
+            // Validate image.
+            var image = Image.FromFile(options.InputFile);
             if (image.Width % 8 != 0 || image.Height % 8 != 0)
             {
                 Console.WriteLine("ERROR: The input image width and height have to be multiples of 8.");
@@ -111,68 +124,74 @@ namespace gb_map_converter
             var mapWidth = image.Width / 8;
             var mapHeight = image.Height / 8;
 
-            // Output Folder
-            if (string.IsNullOrWhiteSpace(o.OutputFolder))
+            // Validate option: OutputFolder
+            if (string.IsNullOrWhiteSpace(options.OutputFolder))
             {
-                o.OutputFolder = Directory.GetCurrentDirectory();
+                options.OutputFolder = Directory.GetCurrentDirectory();
             }
-            if (!Directory.Exists(o.OutputFolder))
+            if (!Directory.Exists(options.OutputFolder))
             {
                 Console.WriteLine("ERROR: The output folder does not exist.");
                 return;
             }
 
-            // Name
-            if (string.IsNullOrWhiteSpace(o.Name))
+            // Validate option: Name
+            if (string.IsNullOrWhiteSpace(options.Name))
             {
-                o.Name = Path.GetFileNameWithoutExtension(o.InputFile);
+                options.Name = Path.GetFileNameWithoutExtension(options.InputFile);
             }
-            o.Name = o.Name.ToLower();
-            if (char.IsDigit(o.Name[0]) || !Regex.IsMatch(o.Name, "^[a-z0-9_]*$"))
+            options.Name = options.Name.ToLower();
+            if (char.IsDigit(options.Name[0]) || !Regex.IsMatch(options.Name, "^[a-z0-9_]*$"))
             {
                 Console.WriteLine("ERROR: The name cannot start with a number and can only contain letters, numbers, and underscores.");
                 return;
             }
 
-            if (o.TileOutput && !Execute("superfamiconv.exe", $"-i \"{o.InputFile}\" -F -M gb --out-tiles-image \"_tiles.png\""))
+            // Generate tile image
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.png");
+            if (options.TileOutput && !Execute(options, "superfamiconv.exe", $"-i \"{options.InputFile}\" -F -M gb --out-tiles-image \"{outputPath}\""))
             {
                 Console.WriteLine("ERROR: Tile image creation failed:");
                 Console.Write(ProcessErrors.ToString());
                 return;
             }
 
-            if (o.PaletteOutput && !Execute("superfamiconv.exe", $"-i \"{o.InputFile}\" -F -M gb --out-palette-image \"_palette.png\""))
+            // Generate palette image
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_palette.png");
+            if (options.PaletteOutput && !Execute(options, "superfamiconv.exe", $"-i \"{options.InputFile}\" -F -M gb --out-palette-image \"{outputPath}\""))
             {
                 Console.WriteLine("ERROR: Palette image creation failed:");
                 Console.Write(ProcessErrors.ToString());
                 return;
             }
 
-            if (!Execute("superfamiconv.exe", $"-i \"{o.InputFile}\" -v -M gb -t \"{TempTilesFile}\""))
+            // Generate tile data
+            if (!Execute(options, "superfamiconv.exe", $"-i \"{options.InputFile}\" -v -M gb -t \"{TempTilesFile}\""))
             {
                 Console.WriteLine("ERROR: Tile conversion failed:");
                 Console.Write(ProcessErrors.ToString());
                 return;
             }
 
-            if (!Execute("superfamiconv.exe", $"-i \"{o.InputFile}\" -v -M gb -m \"{TempMapFile}\""))
+            // Generate map data
+            if (!Execute(options, "superfamiconv.exe", $"-i \"{options.InputFile}\" -v -M gb -m \"{TempMapFile}\""))
             {
                 Console.WriteLine("ERROR: Map conversion failed:");
                 Console.Write(ProcessErrors.ToString());
                 return;
             }
 
-            int length;
-            string outputPath;
+            int byteCount;
             var sb = new StringBuilder();
 
-            outputPath = Path.Combine(o.OutputFolder, $"{o.Name}_tiles.c");
+            #region TILES.C
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.c");
             sb.Clear();
-            AddHeader(sb, outputPath, true);
+            AddHeader(sb, outputPath, options.Bank);
             using (var reader = new FileStream(TempTilesFile, FileMode.Open))
             {
-                length = (int)reader.Length;
-                sb.AppendLine($"const unsigned char {o.Name.ToUpper()}_TILE_DATA[] = {{");
+                byteCount = (int)reader.Length;
+                sb.AppendLine($"const unsigned char {options.Name.ToUpper()}_TILE_DATA[] = {{");
                 sb.AppendLine($"{"",4}// Tile 0");
                 int b;
                 for (var i = 0; (b = reader.ReadByte()) != -1; i++)
@@ -201,29 +220,38 @@ namespace gb_map_converter
             }
             File.Delete(TempTilesFile);
             WriteToFile(outputPath, sb);
+            #endregion
 
-            outputPath = Path.Combine(o.OutputFolder, $"{o.Name}_tiles.h");
+            #region TILES.H
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.h");
             sb.Clear();
-            AddHeader(sb, outputPath);
 
+            AddHeader(sb, outputPath);
             sb.AppendLine($"#ifndef __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine($"#define __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
+            sb.AppendLine();
 
+            sb.AppendLine($"#define {options.Name.ToUpper()}_TILE_COUNT {byteCount / 16}");
             sb.AppendLine();
-            sb.AppendLine($"#define {o.Name.ToUpper()}_TILE_COUNT {length / 16}");
-            sb.AppendLine();
-            sb.AppendLine($"extern const unsigned char {o.Name.ToUpper()}_TILE_DATA[];");
 
+            sb.AppendLine($"extern const void __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
             sb.AppendLine();
+
+            sb.AppendLine($"extern const unsigned char {options.Name.ToUpper()}_TILE_DATA[];");
+            sb.AppendLine();
+
             sb.AppendLine("#endif");
-            WriteToFile(outputPath, sb);
 
-            outputPath = Path.Combine(o.OutputFolder, $"{o.Name}_map.c");
+            WriteToFile(outputPath, sb);
+            #endregion
+
+            #region MAP.C
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.c");
             sb.Clear();
-            AddHeader(sb, outputPath, true);
+            AddHeader(sb, outputPath, options.Bank);
             using (var reader = new FileStream(TempMapFile, FileMode.Open))
             {
-                sb.AppendLine($"const unsigned char {o.Name.ToUpper()}_MAP_DATA[] = {{");
+                sb.AppendLine($"const unsigned char {options.Name.ToUpper()}_MAP_DATA[] = {{");
                 int b;
                 for (var i = 0; (b = reader.ReadByte()) != -1; i++)
                 {
@@ -247,23 +275,30 @@ namespace gb_map_converter
             }
             File.Delete(TempMapFile);
             WriteToFile(outputPath, sb);
+            #endregion
 
-            outputPath = Path.Combine(o.OutputFolder, $"{o.Name}_map.h");
+            #region MAP.H
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.h");
             sb.Clear();
             AddHeader(sb, outputPath);
 
             sb.AppendLine($"#ifndef __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine($"#define __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
+            sb.AppendLine();
 
+            sb.AppendLine($"#define {options.Name.ToUpper()}_MAP_WIDTH {mapWidth}");
+            sb.AppendLine($"#define {options.Name.ToUpper()}_MAP_HEIGHT {mapHeight}");
             sb.AppendLine();
-            sb.AppendLine($"#define {o.Name.ToUpper()}_MAP_WIDTH {mapWidth}");
-            sb.AppendLine($"#define {o.Name.ToUpper()}_MAP_HEIGHT {mapHeight}");
-            sb.AppendLine();
-            sb.AppendLine($"extern const unsigned char {o.Name.ToUpper()}_MAP_DATA[];");
 
+            sb.AppendLine($"extern const void __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
             sb.AppendLine();
+
+            sb.AppendLine($"extern const unsigned char {options.Name.ToUpper()}_MAP_DATA[];");
+            sb.AppendLine();
+
             sb.AppendLine("#endif");
             WriteToFile(outputPath, sb);
+            #endregion
         }
 
         private static void WriteToFile(string filePath, StringBuilder sb)
