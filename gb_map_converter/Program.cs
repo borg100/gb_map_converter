@@ -249,7 +249,7 @@ namespace gb_map_converter
             sb.AppendLine($"#define {options.Name.ToUpper()}_TILE_COUNT {byteCount / 16}");
             sb.AppendLine();
 
-            sb.AppendLine($"extern const void __bank_{variableName.ToLower()};");
+            sb.AppendLine($"extern const void __bank_{variableName};");
             sb.AppendLine();
 
             sb.AppendLine($"extern const unsigned char {variableName}[];");
@@ -313,7 +313,7 @@ namespace gb_map_converter
             sb.AppendLine($"#define {options.Name.ToUpper()}_MAP_HEIGHT {mapHeight}");
             sb.AppendLine();
 
-            sb.AppendLine($"extern const void __bank_{variableName.ToLower()};");
+            sb.AppendLine($"extern const void __bank_{variableName};");
             sb.AppendLine();
 
             sb.AppendLine($"extern const unsigned char {variableName}[];");
