@@ -20,6 +20,8 @@ namespace gb_map_converter
         private const int Tiles_BytesPerLine = 8;
         private const int Map_BytesPerLine = 16;
 
+        private const bool HideIntellisenceErrors = true;
+
         public static string HeaderString
         {
             get
@@ -80,22 +82,26 @@ namespace gb_map_converter
             return process.ExitCode == 0;
         }
 
-        static void AddHeader(StringBuilder sb, string outputPath, int bank = 0, bool hideErrors = true)
+        static void AppendHeader(StringBuilder sb, string outputPath)
         {
             sb.AppendLine("/*");
             sb.AppendLine($"{"",4}{Path.GetFileName(outputPath).ToUpper()}");
             sb.AppendLine($"{"",4}{HeaderString}");
             sb.AppendLine("*/");
             sb.AppendLine();
+        }
+
+        static void AppendBank(StringBuilder sb, int bank, string variableName)
+        {
             if (bank > 0)
             {
                 sb.AppendLine($"#pragma bank {bank}");
-                if (hideErrors)
+                if (HideIntellisenceErrors)
                 {
                     sb.AppendLine("#ifndef __INTELLISENSE__");
                 }
-                sb.AppendLine($"const void __at({bank}) __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
-                if (hideErrors)
+                sb.AppendLine($"const void __at({bank}) __bank_{variableName.ToLower()};");
+                if (HideIntellisenceErrors)
                 {
                     sb.AppendLine("#endif");
                 }
@@ -183,15 +189,21 @@ namespace gb_map_converter
 
             int byteCount;
             var sb = new StringBuilder();
+            string variableName;
 
             #region TILES.C
-            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.c");
             sb.Clear();
-            AddHeader(sb, outputPath, options.Bank);
+
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.c");
+            variableName = $"{options.Name.ToUpper()}_TILE_DATA";
+
+            AppendHeader(sb, outputPath);
+            AppendBank(sb, options.Bank, variableName);
+
             using (var reader = new FileStream(TempTilesFile, FileMode.Open))
             {
                 byteCount = (int)reader.Length;
-                sb.AppendLine($"const unsigned char {options.Name.ToUpper()}_TILE_DATA[] = {{");
+                sb.AppendLine($"const unsigned char {variableName}[] = {{");
                 sb.AppendLine($"{"",4}// Tile 0");
                 int b;
                 for (var i = 0; (b = reader.ReadByte()) != -1; i++)
@@ -223,10 +235,13 @@ namespace gb_map_converter
             #endregion
 
             #region TILES.H
-            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.h");
             sb.Clear();
 
-            AddHeader(sb, outputPath);
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.h");
+            variableName = $"{options.Name.ToUpper()}_TILE_DATA";
+
+            AppendHeader(sb, outputPath);
+
             sb.AppendLine($"#ifndef __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine($"#define __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine();
@@ -234,10 +249,10 @@ namespace gb_map_converter
             sb.AppendLine($"#define {options.Name.ToUpper()}_TILE_COUNT {byteCount / 16}");
             sb.AppendLine();
 
-            sb.AppendLine($"extern const void __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
+            sb.AppendLine($"extern const void __bank_{variableName.ToLower()};");
             sb.AppendLine();
 
-            sb.AppendLine($"extern const unsigned char {options.Name.ToUpper()}_TILE_DATA[];");
+            sb.AppendLine($"extern const unsigned char {variableName}[];");
             sb.AppendLine();
 
             sb.AppendLine("#endif");
@@ -246,12 +261,17 @@ namespace gb_map_converter
             #endregion
 
             #region MAP.C
-            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.c");
             sb.Clear();
-            AddHeader(sb, outputPath, options.Bank);
+
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.c");
+            variableName = $"{options.Name.ToUpper()}_MAP_DATA";
+
+            AppendHeader(sb, outputPath);
+            AppendBank(sb, options.Bank, variableName);
+
             using (var reader = new FileStream(TempMapFile, FileMode.Open))
             {
-                sb.AppendLine($"const unsigned char {options.Name.ToUpper()}_MAP_DATA[] = {{");
+                sb.AppendLine($"const unsigned char {variableName}[] = {{");
                 int b;
                 for (var i = 0; (b = reader.ReadByte()) != -1; i++)
                 {
@@ -278,9 +298,12 @@ namespace gb_map_converter
             #endregion
 
             #region MAP.H
-            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.h");
             sb.Clear();
-            AddHeader(sb, outputPath);
+
+            outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.h");
+            variableName = $"{options.Name.ToUpper()}_MAP_DATA";
+
+            AppendHeader(sb, outputPath);
 
             sb.AppendLine($"#ifndef __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine($"#define __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
@@ -290,10 +313,10 @@ namespace gb_map_converter
             sb.AppendLine($"#define {options.Name.ToUpper()}_MAP_HEIGHT {mapHeight}");
             sb.AppendLine();
 
-            sb.AppendLine($"extern const void __bank_{Path.GetFileNameWithoutExtension(outputPath).ToLower()};");
+            sb.AppendLine($"extern const void __bank_{variableName.ToLower()};");
             sb.AppendLine();
 
-            sb.AppendLine($"extern const unsigned char {options.Name.ToUpper()}_MAP_DATA[];");
+            sb.AppendLine($"extern const unsigned char {variableName}[];");
             sb.AppendLine();
 
             sb.AppendLine("#endif");
