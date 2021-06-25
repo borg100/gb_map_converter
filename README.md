@@ -11,6 +11,8 @@ Argument | Description
 -n, --name | Name to use for converted files and variables.
 -t, --tiles | Create a _tiles.png file.
 -p, --palette | Create a _palette.png file.
+-b, --bank | (Default: 255) Specify bank number. Use 0 to disable.
+-v, --verbose | (Default: false) Show more information.
 --help | Display this help screen.
 --version | Display version information.
 
