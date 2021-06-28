@@ -9,9 +9,10 @@ Argument | Description
 -i, --input | Required. Input image to be converted.
 -o, --output | Output folder to place converted files.
 -n, --name | Name to use for converted files and variables.
--t, --tiles | Create a _tiles.png file.
--p, --palette | Create a _palette.png file.
+-t, --tiles | (Default: false) Create a tiles image file.
+-p, --palette | (Default: false) Create a palette image file.
 -b, --bank | (Default: 255) Specify bank number. Use 0 to disable.
+-l, --lower | (Default: false) Use lowercase variables instead of uppercase.
 -v, --verbose | (Default: false) Show more information.
 --help | Display this help screen.
 --version | Display version information.
