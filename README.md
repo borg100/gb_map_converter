@@ -7,7 +7,8 @@ Takes a PNG of a map and generates the [GBDK 2020](https://github.com/gbdk-2020/
 Argument | Description
 ------------ | -------------
 -i, --input | Required. Input image to be converted.
--o, --output | Output folder to place converted files.
+-a, --auto-output | Output in the same folder as the input image.
+-o, --output | (Overrides auto-output) Output folder to place converted files.
 -n, --name | Name to use for converted files and variables.
 -t, --tiles | (Default: false) Create a tiles image file.
 -p, --palette | (Default: false) Create a palette image file.
