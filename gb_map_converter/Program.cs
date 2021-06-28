@@ -16,6 +16,7 @@ namespace gb_map_converter
 
         private const string TempTilesFile = "_tiles.tmp";
         private const string TempMapFile = "_map.tmp";
+        private const string TempPaletteFile = "_palette.tmp";
 
         private const int Tiles_BytesPerLine = 8;
         private const int Map_BytesPerLine = 16;
@@ -39,12 +40,14 @@ namespace gb_map_converter
             public string OutputFolder { get; set; }
             [Option('n', "name", Required = false, HelpText = "Name to use for converted files and variables.")]
             public string Name { get; set; }
-            [Option('t', "tiles", Required = false, HelpText = "Create a tiles image file.", Default = true)]
+            [Option('t', "tiles", Required = false, HelpText = "Create a tiles image file.", Default = false)]
             public bool TileOutput { get; set; }
-            [Option('p', "palette", Required = false, HelpText = "Create a palette image file.", Default = true)]
+            [Option('p', "palette", Required = false, HelpText = "Create a palette image file.", Default = false)]
             public bool PaletteOutput { get; set; }
             [Option('b', "bank", Required = false, HelpText = "Specify bank number. Use 0 to disable.", Default = 255)]
             public int Bank { get; set; }
+            [Option('l', "lower", Required = false, HelpText = "Use lowercase variables instead of uppercase.", Default = false)]
+            public bool LowercaseVariables { get; set; }
             [Option('v', "verbose", Required = false, HelpText = "Show more information.", Default = false)]
             public bool Verbose { get; set; }
         }
@@ -187,6 +190,23 @@ namespace gb_map_converter
                 return;
             }
 
+            // Generate palette data
+            if (!Execute(options, "superfamiconv.exe", $"-i \"{options.InputFile}\" -F -M gb -p \"{TempPaletteFile}\""))
+            {
+                Console.WriteLine("ERROR: Palette conversion failed:");
+                Console.Write(ProcessErrors.ToString());
+                return;
+            }
+
+            // Read the palette byte.
+            byte paletteByte;
+            using (var reader = new FileStream(TempPaletteFile, FileMode.Open))
+            {
+                paletteByte = (byte)reader.ReadByte();
+            }
+            File.Delete(TempPaletteFile);
+
+
             int byteCount;
             var sb = new StringBuilder();
             string variableName;
@@ -195,7 +215,8 @@ namespace gb_map_converter
             sb.Clear();
 
             outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.c");
-            variableName = $"{options.Name.ToUpper()}_TILE_DATA";
+            variableName = $"{options.Name}_TILE_DATA";
+            variableName = options.LowercaseVariables ? variableName.ToLower() : variableName.ToUpper();
 
             AppendHeader(sb, outputPath);
             AppendBank(sb, options.Bank, variableName);
@@ -204,7 +225,6 @@ namespace gb_map_converter
             {
                 byteCount = (int)reader.Length;
                 sb.AppendLine($"const unsigned char {variableName}[] = {{");
-                sb.AppendLine($"{"",4}// Tile 0");
                 int b;
                 for (var i = 0; (b = reader.ReadByte()) != -1; i++)
                 {
@@ -213,12 +233,13 @@ namespace gb_map_converter
                         if (i > 0)
                         {
                             sb.AppendLine(",");
-                            if (i % 16 == 0)
-                            {
-                                sb.AppendLine($"{"",4}// Tile {i / 16}");
-                            }
+
                         }
-                        sb.Append("".PadLeft(4));
+                        if (i % 16 == 0)
+                        {
+                            sb.AppendLine($"{"",4}// Tile {i / 16}");
+                        }
+                        sb.Append($"{"",4}");
                     }
                     else
                     {
@@ -239,22 +260,32 @@ namespace gb_map_converter
 
             outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_tiles.h");
             variableName = $"{options.Name.ToUpper()}_TILE_DATA";
+            variableName = options.LowercaseVariables ? variableName.ToLower() : variableName.ToUpper();
 
             AppendHeader(sb, outputPath);
 
+            // Include Guard
             sb.AppendLine($"#ifndef __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine($"#define __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine();
 
+            // Number of Tiles (Sets of 16 bytes)
             sb.AppendLine($"#define {options.Name.ToUpper()}_TILE_COUNT {byteCount / 16}");
             sb.AppendLine();
 
+            // Palette
+            sb.AppendLine($"#define {options.Name.ToUpper()}_PALETTE 0x{paletteByte:X2}");
+            sb.AppendLine();
+
+            // Bank Number
             sb.AppendLine($"extern const void __bank_{variableName};");
             sb.AppendLine();
 
+            // Tile Data
             sb.AppendLine($"extern const unsigned char {variableName}[];");
             sb.AppendLine();
 
+            // Include Guard
             sb.AppendLine("#endif");
 
             WriteToFile(outputPath, sb);
@@ -265,6 +296,7 @@ namespace gb_map_converter
 
             outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.c");
             variableName = $"{options.Name.ToUpper()}_MAP_DATA";
+            variableName = options.LowercaseVariables ? variableName.ToLower() : variableName.ToUpper();
 
             AppendHeader(sb, outputPath);
             AppendBank(sb, options.Bank, variableName);
@@ -281,7 +313,7 @@ namespace gb_map_converter
                         {
                             sb.AppendLine(",");
                         }
-                        sb.Append("".PadLeft(4));
+                        sb.Append($"{"",4}");
                     }
                     else
                     {
@@ -302,24 +334,31 @@ namespace gb_map_converter
 
             outputPath = Path.Combine(options.OutputFolder, $"{options.Name}_map.h");
             variableName = $"{options.Name.ToUpper()}_MAP_DATA";
+            variableName = options.LowercaseVariables ? variableName.ToLower() : variableName.ToUpper();
 
             AppendHeader(sb, outputPath);
 
+            // Include Guard
             sb.AppendLine($"#ifndef __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine($"#define __MAP_{Path.GetFileName(outputPath).ToUpper().Replace(".", "_")}__");
             sb.AppendLine();
 
+            // Map Dimensions (Number of tiles)
             sb.AppendLine($"#define {options.Name.ToUpper()}_MAP_WIDTH {mapWidth}");
             sb.AppendLine($"#define {options.Name.ToUpper()}_MAP_HEIGHT {mapHeight}");
             sb.AppendLine();
 
+            // Bank Number
             sb.AppendLine($"extern const void __bank_{variableName};");
             sb.AppendLine();
 
+            // Map Data
             sb.AppendLine($"extern const unsigned char {variableName}[];");
             sb.AppendLine();
 
+            // Include Guard
             sb.AppendLine("#endif");
+
             WriteToFile(outputPath, sb);
             #endregion
         }
